@@ -1,44 +1,26 @@
-import time
-import requests
+import asyncio
+import websockets
+import os        # <-- ОБЯЗАТЕЛЬНО ДОБАВЬ ЭТОТ ИМПОРТ
+import requests  # Твой импорт, который мы чинили в прошлый раз
 
-URL_P1 = "https://school-game-test-default-rtdb.firebaseio.com/player1_move.json"
-URL_P2 = "https://school-game-test-default-rtdb.firebaseio.com/player2_move.json"
+clients = set()
 
-print("--- ИГРОК 1 ---")
-print("Очищаем старые ходы...")
-requests.put(URL_P1, json="пусто")
-requests.put(URL_P2, json="пусто")
+async def handler(websocket):
+    clients.add(websocket)
+    try:
+        async for message in websocket:
+            for client in clients:
+                if client != websocket:
+                    await client.send(message)
+    finally:
+        clients.remove(websocket)
 
-try:
-    for i in range(1, 4):
-        my_move = f"Ход Игрока 1 номер {i}"
-        
-        # Отправляем свой ход
-        requests.put(URL_P1, json=my_move)
-        print(f"\nВы отправили в облако: {my_move}")
-        print("Ждем, пока Игрок 2 ответит...")
-        
-        # Ждем ход от Игрока 2
-        while True:
-            try:
-                p2_move = requests.get(URL_P2).json()
-                
-                # Если вернулся словарь с ошибкой или "пусто", игнорируем и ждем дальше
-                if isinstance(p2_move, dict) and "error" in p2_move:
-                    time.sleep(1)
-                    continue
-                    
-                if p2_move and p2_move != "пусто":
-                    print(f"Игрок 2 прислал ответ: {p2_move}")
-                    # Сбрасываем его ход для следующего раунда
-                    requests.put(URL_P2, json="пусто")
-                    break
-            except Exception:
-                pass # Если лагает интернет, просто пробуем еще раз
-                
-            time.sleep(1.5)
-            
-    print("\nИгра успешно завершена!")
+async def main():
+    # Получаем порт от Render. Если его нет, используем 10000 по умолчанию
+    port = int(os.environ.get("PORT", 10000))
+    
+    async with websockets.serve(handler, "0.0.0.0", port):
+        print(f"Server started on port {port}")
+        await asyncio.Future()
 
-except Exception as e:
-    print(f"Ошибка: {e}")
+asyncio.run(main())
